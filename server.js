@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const bcrypt = require("bcrypt"); // Adicionado para criptografar senhas
 const app = express();
 
 app.use(cors());
@@ -40,11 +41,9 @@ app.post("/reservar", async (req, res) => {
   }
 
   try {
-    // Remove reservas expiradas
     const hoje = new Date().toISOString().split("T")[0];
     await Reserva.deleteMany({ data: { $lt: hoje } });
 
-    // Verifica se já há reserva
     const reservaExistente = await Reserva.findOne({ sala, data });
     if (reservaExistente) {
       return res.status(409).json({ message: "Sala já reservada para esse dia." });
@@ -81,12 +80,19 @@ app.get("/reservas/:data", async (req, res) => {
   }
 });
 
-// CREATE - Cadastrar novo usuário
+// CREATE - Cadastrar novo usuário com senha criptografada
 app.post("/cadastro", async (req, res) => {
   const { apelido, email, senha } = req.body;
 
   try {
-    const novoUsuario = new Usuario({ apelido, email, senha });
+    const senhaCriptografada = await bcrypt.hash(senha, 10);
+
+    const novoUsuario = new Usuario({
+      apelido,
+      email,
+      senha: senhaCriptografada
+    });
+
     await novoUsuario.save();
     res.status(201).json({ message: "Usuário cadastrado com sucesso!" });
   } catch (err) {
@@ -128,14 +134,20 @@ app.delete("/usuarios/:id", async (req, res) => {
   }
 });
 
-// LOGIN
+// LOGIN - Comparar senha criptografada
 app.post("/login", async (req, res) => {
   const { email, senha } = req.body;
 
   try {
     const usuario = await Usuario.findOne({ email });
 
-    if (!usuario || usuario.senha !== senha) {
+    if (!usuario) {
+      return res.status(401).json({ message: "Email ou senha inválidos." });
+    }
+
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
+
+    if (!senhaCorreta) {
       return res.status(401).json({ message: "Email ou senha inválidos." });
     }
 
