@@ -4,7 +4,6 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const app = express();
-const reservaRoutes = require("./routes/reserva");
 
 
 app.use(cors());
