@@ -23,7 +23,7 @@ const UsuarioSchema = new mongoose.Schema({
 
 const Usuario = mongoose.model("Usuario", UsuarioSchema);
 
-// Modelo de reserva (atualizado)
+// ALTERAÇÃO NO SCHEMA (pode manter os antigos se quiser exibir no front)
 const ReservaSchema = new mongoose.Schema({
   sala: String,
   dataInicio: Date,
@@ -32,6 +32,8 @@ const ReservaSchema = new mongoose.Schema({
   horarioFim: String,
   finalidade: String,
   usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: "Usuario" },
+  dataHoraInicio: Date,
+  dataHoraFim: Date,
   criadoEm: { type: Date, default: Date.now }
 });
 
@@ -64,18 +66,13 @@ app.post("/reservar", async (req, res) => {
     // Verificar conflitos
     const conflitos = await Reserva.find({
       sala,
-      $or: [
-        {
-          dataInicio: { $lte: fim },
-          dataFim: { $gte: inicio },
-          $or: [
-            { horarioInicio: { $lt: horarioFim }, horarioFim: { $gt: horarioInicio } },
-            { horarioInicio: { $gte: horarioInicio, $lt: horarioFim } },
-            { horarioFim: { $gt: horarioInicio, $lte: horarioFim } }
-          ]
-        }
-      ]
-    });
+        $or: [
+          {
+            dataHoraInicio: { $lt: dataFimFull },
+            dataHoraFim: { $gt: dataInicioFull }
+          }
+        ]
+      });
 
     if (conflitos.length > 0) {
       return res.status(400).json({ message: "Conflito com outra reserva." });
@@ -83,12 +80,14 @@ app.post("/reservar", async (req, res) => {
 
     const novaReserva = new Reserva({
       sala,
-      dataInicio: inicio,
-      dataFim: fim,
+      dataInicio: new Date(dataInicio),
+      dataFim: new Date(dataFim),
       horarioInicio,
       horarioFim,
       finalidade,
       usuarioId,
+      dataHoraInicio: dataInicioFull,
+      dataHoraFim: dataFimFull
     });
 
     await novaReserva.save();
