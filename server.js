@@ -161,6 +161,16 @@ app.post("/login", async (req, res) => {
   }
 });
 
+// Ping automático a cada 3 minutos para evitar inatividade no Render
+const fetch = require("node-fetch");
+
+setInterval(() => {
+  fetch("https://reserva-salas-backend.onrender.com") 
+    .then(() => console.log("Ping enviado para manter o servidor ativo"))
+    .catch(err => console.error("Erro ao enviar ping:", err.message));
+}, 3 * 60 * 1000); // 3 minutos
+
+
 // Inicializa o servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
