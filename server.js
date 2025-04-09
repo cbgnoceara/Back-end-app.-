@@ -124,13 +124,24 @@ app.put("/usuarios/:id", async (req, res) => {
   }
 });
 
-// DELETE - Excluir um usuário
-app.delete("/usuarios/:id", async (req, res) => {
+app.delete("/reservas/:id", async (req, res) => {
+  const { usuarioId } = req.body;
+
   try {
-    await Usuario.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: "Usuário excluído com sucesso." });
+    const reserva = await Reserva.findById(req.params.id);
+
+    if (!reserva) {
+      return res.status(404).json({ message: "Reserva não encontrada." });
+    }
+
+    if (reserva.usuarioId.toString() !== usuarioId) {
+      return res.status(403).json({ message: "Você não tem permissão para excluir essa reserva." });
+    }
+
+    await Reserva.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Reserva excluída com sucesso." });
   } catch (err) {
-    res.status(500).json({ error: "Erro ao excluir usuário." });
+    res.status(500).json({ error: "Erro ao excluir reserva." });
   }
 });
 
