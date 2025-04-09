@@ -65,8 +65,14 @@ app.post("/reservar", async (req, res) => {
     const fim = new Date(dataFim);
   
     // Montar objetos Date completos com data + hora
-    const dataInicioFull = new Date(`${dataInicio}T${horarioInicio}`);
-    const dataFimFull = new Date(`${dataFim}T${horarioFim}`);
+    function criarDataLocal(dataStr, horaStr) {
+      const [ano, mes, dia] = dataStr.split('-').map(Number);
+      const [hora, minuto] = horaStr.split(':').map(Number);
+      return new Date(ano, mes - 1, dia, hora, minuto); // mês começa do 0
+    }
+    
+    const dataInicioFull = criarDataLocal(dataInicio, horarioInicio);
+    const dataFimFull = criarDataLocal(dataFim, horarioFim);    
   
     // Limpar reservas antigas (opcional)
     const hoje = new Date();
