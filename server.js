@@ -63,30 +63,34 @@ app.post("/reservar", async (req, res) => {
   try {
     const inicio = new Date(dataInicio);
     const fim = new Date(dataFim);
-
+  
+    // Montar objetos Date completos com data + hora
+    const dataInicioFull = new Date(`${dataInicio}T${horarioInicio}`);
+    const dataFimFull = new Date(`${dataFim}T${horarioFim}`);
+  
     // Limpar reservas antigas (opcional)
     const hoje = new Date();
     await Reserva.deleteMany({ dataFim: { $lt: hoje } });
-
+  
     // Verificar conflitos
     const conflitos = await Reserva.find({
       sala,
-        $or: [
-          {
-            dataHoraInicio: { $lt: dataFimFull },
-            dataHoraFim: { $gt: dataInicioFull }
-          }
-        ]
-      });
-
+      $or: [
+        {
+          dataHoraInicio: { $lt: dataFimFull },
+          dataHoraFim: { $gt: dataInicioFull }
+        }
+      ]
+    });
+  
     if (conflitos.length > 0) {
       return res.status(400).json({ message: "Conflito com outra reserva." });
     }
-
+  
     const novaReserva = new Reserva({
       sala,
-      dataInicio: new Date(dataInicio),
-      dataFim: new Date(dataFim),
+      dataInicio: inicio,
+      dataFim: fim,
       horarioInicio,
       horarioFim,
       finalidade,
