@@ -2,8 +2,10 @@ require("dotenv").config();
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const bcrypt = require("bcrypt"); // Adicionado para criptografar senhas
+const bcrypt = require("bcrypt");
 const app = express();
+const reservaRoutes = require("./routes/reserva");
+
 
 app.use(cors());
 app.use(express.json());
@@ -22,38 +24,79 @@ const UsuarioSchema = new mongoose.Schema({
 
 const Usuario = mongoose.model("Usuario", UsuarioSchema);
 
-// Modelo de reserva
+// Modelo de reserva (atualizado)
 const ReservaSchema = new mongoose.Schema({
   sala: String,
-  data: String, // formato: "YYYY-MM-DD"
+  dataInicio: Date,
+  dataFim: Date,
+  horarioInicio: String,
+  horarioFim: String,
+  finalidade: String,
   usuarioId: { type: mongoose.Schema.Types.ObjectId, ref: "Usuario" },
   criadoEm: { type: Date, default: Date.now }
 });
 
 const Reserva = mongoose.model("Reserva", ReservaSchema);
 
-// Rota para reservar sala
+// Rota para reservar sala com verificação de conflito por data/hora
 app.post("/reservar", async (req, res) => {
-  const { sala, data, usuarioId } = req.body;
+  const {
+    sala,
+    dataInicio,
+    dataFim,
+    horarioInicio,
+    horarioFim,
+    finalidade,
+    usuarioId,
+  } = req.body;
 
-  if (!sala || !data || !usuarioId) {
+  if (!sala || !dataInicio || !dataFim || !horarioInicio || !horarioFim || !usuarioId) {
     return res.status(400).json({ message: "Dados incompletos." });
   }
 
   try {
-    const hoje = new Date().toISOString().split("T")[0];
-    await Reserva.deleteMany({ data: { $lt: hoje } });
+    const inicio = new Date(dataInicio);
+    const fim = new Date(dataFim);
 
-    const reservaExistente = await Reserva.findOne({ sala, data });
-    if (reservaExistente) {
-      return res.status(409).json({ message: "Sala já reservada para esse dia." });
+    // Limpar reservas antigas (opcional)
+    const hoje = new Date();
+    await Reserva.deleteMany({ dataFim: { $lt: hoje } });
+
+    // Verificar conflitos
+    const conflitos = await Reserva.find({
+      sala,
+      $or: [
+        {
+          dataInicio: { $lte: fim },
+          dataFim: { $gte: inicio },
+          $or: [
+            { horarioInicio: { $lt: horarioFim }, horarioFim: { $gt: horarioInicio } },
+            { horarioInicio: { $gte: horarioInicio, $lt: horarioFim } },
+            { horarioFim: { $gt: horarioInicio, $lte: horarioFim } }
+          ]
+        }
+      ]
+    });
+
+    if (conflitos.length > 0) {
+      return res.status(400).json({ message: "Conflito com outra reserva." });
     }
 
-    const novaReserva = new Reserva({ sala, data, usuarioId });
+    const novaReserva = new Reserva({
+      sala,
+      dataInicio: inicio,
+      dataFim: fim,
+      horarioInicio,
+      horarioFim,
+      finalidade,
+      usuarioId,
+    });
+
     await novaReserva.save();
 
     res.status(201).json({ message: "Reserva criada com sucesso!" });
   } catch (err) {
+    console.error("Erro ao reservar:", err);
     res.status(500).json({ message: "Erro ao criar reserva", erro: err.message });
   }
 });
@@ -68,15 +111,42 @@ app.get("/reservas", async (req, res) => {
   }
 });
 
-// Rota para listar reservas por data (com apelido do usuário)
+// Rota para listar reservas por data (verifica intervalo)
 app.get("/reservas/:data", async (req, res) => {
   const { data } = req.params;
 
   try {
-    const reservas = await Reserva.find({ data }).populate("usuarioId", "apelido");
+    const dataRef = new Date(data);
+    const reservas = await Reserva.find({
+      dataInicio: { $lte: dataRef },
+      dataFim: { $gte: dataRef }
+    }).populate("usuarioId", "apelido");
+
     res.status(200).json(reservas);
   } catch (err) {
     res.status(500).json({ message: "Erro ao buscar reservas", erro: err.message });
+  }
+});
+
+// Rota para deletar reserva com verificação de usuário
+app.delete("/reservas/:id", async (req, res) => {
+  const { usuarioId } = req.body;
+
+  try {
+    const reserva = await Reserva.findById(req.params.id);
+
+    if (!reserva) {
+      return res.status(404).json({ message: "Reserva não encontrada." });
+    }
+
+    if (reserva.usuarioId.toString() !== usuarioId) {
+      return res.status(403).json({ message: "Você não tem permissão para excluir essa reserva." });
+    }
+
+    await Reserva.findByIdAndDelete(req.params.id);
+    res.status(200).json({ message: "Reserva excluída com sucesso." });
+  } catch (err) {
+    res.status(500).json({ error: "Erro ao excluir reserva." });
   }
 });
 
@@ -124,27 +194,6 @@ app.put("/usuarios/:id", async (req, res) => {
   }
 });
 
-app.delete("/reservas/:id", async (req, res) => {
-  const { usuarioId } = req.body;
-
-  try {
-    const reserva = await Reserva.findById(req.params.id);
-
-    if (!reserva) {
-      return res.status(404).json({ message: "Reserva não encontrada." });
-    }
-
-    if (reserva.usuarioId.toString() !== usuarioId) {
-      return res.status(403).json({ message: "Você não tem permissão para excluir essa reserva." });
-    }
-
-    await Reserva.findByIdAndDelete(req.params.id);
-    res.status(200).json({ message: "Reserva excluída com sucesso." });
-  } catch (err) {
-    res.status(500).json({ error: "Erro ao excluir reserva." });
-  }
-});
-
 // LOGIN - Comparar senha criptografada
 app.post("/login", async (req, res) => {
   const { email, senha } = req.body;
@@ -172,7 +221,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// Ping automático a cada 3 minutos para evitar inatividade no Render
+// Ping automático para manter servidor ativo
 const fetch = (...args) =>
   import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
@@ -180,8 +229,7 @@ setInterval(() => {
   fetch("https://reserva-salas-backend.onrender.com")
     .then(() => console.log("Ping enviado para manter o servidor ativo"))
     .catch(err => console.error("Erro ao enviar ping:", err.message));
-}, 3 * 60 * 1000); // 3 minutos
-
+}, 3 * 60 * 1000);
 
 // Inicializa o servidor
 const PORT = process.env.PORT || 3000;
